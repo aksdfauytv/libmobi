@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <malloc.h>
 #include "util.h"
 #include "parse_rawml.h"
 #include "index.h"
@@ -487,7 +488,7 @@ size_t mobi_get_locale_number(const char *locale_string) {
             lang_code++;
             continue;
         }
-        char lower_locale[strlen(locale_string) + 1];
+        char *lower_locale = (char*)alloca(strlen(locale_string) + 1);
         int i = 0;
         while (locale_string[i]) {
             lower_locale[i] = (char) tolower(locale_string[i]);
@@ -776,7 +777,7 @@ MOBIPdbRecord * mobi_get_record_by_seqnumber(const MOBIData *m, const size_t num
  @param[in] num Sequential number
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_delete_record_by_seqnumber(MOBIData *m, const size_t num) {
+MOBI_RET mobi_delete_record_by_seqnumber(MOBIData *m, size_t num) {
     if (m == NULL) {
         debug_print("%s", "Mobi structure not initialized\n");
         return MOBI_INIT_FAILED;
@@ -969,7 +970,7 @@ char * mobi_decode_exthstring(const MOBIData *m, const unsigned char *data, cons
     }
     size_t out_length = 3 * size + 1;
     size_t in_length = size;
-    char string[out_length];
+    char *string = (char*)alloca(out_length);
     if (mobi_is_cp1252(m)) {
         MOBI_RET ret = mobi_cp1252_to_utf8(string, (const char *) data, &out_length, in_length);
         if (ret != MOBI_SUCCESS) {
@@ -1030,7 +1031,7 @@ static const char setbits[256] = {
  @param[in] byte A byte
  @return Number of bits set
  */
-int mobi_bitcount(const uint8_t byte) {
+int mobi_bitcount(uint8_t byte) {
     return setbits[byte];
 }
 
@@ -1046,7 +1047,7 @@ int mobi_bitcount(const uint8_t byte) {
  @param[in,out] len Length of the memory allocated for the text string, on return set to decompressed text length
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-static MOBI_RET mobi_decompress_content(const MOBIData *m, char *text, FILE *file, size_t *len) {
+static MOBI_RET mobi_decompress_content(const MOBIData *m, char *text, _FILE *file, size_t *len) {
     int dump = false;
     if (file != NULL) {
         dump = true;
@@ -1161,7 +1162,7 @@ static MOBI_RET mobi_decompress_content(const MOBIData *m, char *text, FILE *fil
         }
         curr = curr->next;
         if (dump) {
-            fwrite(decompressed, 1, decompressed_size, file);
+            _fwrite(decompressed, 1, decompressed_size, file);
         } else {
             if (text_length > *len) {
                 debug_print("%s", "Text buffer too small\n");
@@ -1211,7 +1212,7 @@ MOBI_RET mobi_get_rawml(const MOBIData *m, char *text, size_t *len) {
  @param[in,out] file File descriptor
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_dump_rawml(const MOBIData *m, FILE *file) {
+MOBI_RET mobi_dump_rawml(const MOBIData *m, _FILE *file) {
     if (file == NULL) {
         debug_print("%s", "File descriptor is NULL\n");
         return MOBI_FILE_NOT_FOUND;

@@ -109,9 +109,10 @@
 #define FONT_SIZEMAX (50 * 1024 * 1024)
 #define RAWTEXT_SIZEMAX 0xfffffff
 /** @} */
-
+#ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
 
 int mobi_bitcount(uint8_t byte);
 MOBI_RET mobi_delete_record_by_seqnumber(MOBIData *m, size_t num);

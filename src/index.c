@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <malloc.h>
 
 #include "index.h"
 #include "util.h"
@@ -372,7 +373,7 @@ static MOBI_RET mobi_parse_index_entry(MOBIIndx *indx, const MOBIIdxt idxt, cons
             uint32_t value_count;
             uint32_t value_bytes;
         } MOBIPtagx;
-        MOBIPtagx ptagx[tagx->tags_count];
+        MOBIPtagx *ptagx = (MOBIPtagx*)alloca(tagx->tags_count*sizeof(MOBIPtagx));
         uint32_t ptagx_count = 0;
         size_t len;
         size_t i = 0;
@@ -584,7 +585,7 @@ MOBI_RET mobi_parse_indx(const MOBIPdbRecord *indx_record, MOBIIndx *indx, MOBIT
     }
     buffer_setpos(buf, idxt_offset);
     MOBIIdxt idxt;
-    uint32_t offsets[entries_count + 1];
+    uint32_t *offsets = (uint32_t*)alloca((entries_count + 1)*sizeof(uint32_t));
     idxt.offsets = offsets;
     ret = mobi_parse_idxt(buf, &idxt, entries_count);
     if (ret != MOBI_SUCCESS) {

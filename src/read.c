@@ -25,7 +25,7 @@
  @param[in] file Filedescriptor to read from
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_load_pdbheader(MOBIData *m, FILE *file) {
+MOBI_RET mobi_load_pdbheader(MOBIData *m, _FILE *file) {
     if (m == NULL) {
         debug_print("%s", "Mobi structure not initialized\n");
         return MOBI_INIT_FAILED;
@@ -38,7 +38,7 @@ MOBI_RET mobi_load_pdbheader(MOBIData *m, FILE *file) {
         debug_print("%s\n", "Memory allocation failed");
         return MOBI_MALLOC_FAILED;
     }
-    const size_t len = fread(buf->data, 1, PALMDB_HEADER_LEN, file);
+    const size_t len = _fread(buf->data, 1, PALMDB_HEADER_LEN, file);
     if (len != PALMDB_HEADER_LEN) {
         buffer_free(buf);
         return MOBI_DATA_CORRUPT;
@@ -75,7 +75,7 @@ MOBI_RET mobi_load_pdbheader(MOBIData *m, FILE *file) {
  @param[in] file Filedescriptor to read from
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_load_reclist(MOBIData *m, FILE *file) {
+MOBI_RET mobi_load_reclist(MOBIData *m, _FILE *file) {
     if (m == NULL) {
         debug_print("%s", "Mobi structure not initialized\n");
         return MOBI_INIT_FAILED;
@@ -96,7 +96,7 @@ MOBI_RET mobi_load_reclist(MOBIData *m, FILE *file) {
             debug_print("%s\n", "Memory allocation failed");
             return MOBI_MALLOC_FAILED;
         }
-        const size_t len = fread(buf->data, 1, PALMDB_RECORD_INFO_SIZE, file);
+        const size_t len = _fread(buf->data, 1, PALMDB_RECORD_INFO_SIZE, file);
         if (len != PALMDB_RECORD_INFO_SIZE) {
             buffer_free(buf);
             return MOBI_DATA_CORRUPT;
@@ -128,7 +128,7 @@ MOBI_RET mobi_load_reclist(MOBIData *m, FILE *file) {
  @param[in] file Filedescriptor to read from
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_load_rec(MOBIData *m, FILE *file) {
+MOBI_RET mobi_load_rec(MOBIData *m, _FILE *file) {
     MOBI_RET ret;
     if (m == NULL) {
         debug_print("%s", "Mobi structure not initialized\n");
@@ -142,8 +142,8 @@ MOBI_RET mobi_load_rec(MOBIData *m, FILE *file) {
             next = curr->next;
             size = next->offset - curr->offset;
         } else {
-            fseek(file, 0, SEEK_END);
-            long diff = ftell(file) - curr->offset;
+            _fseek(file, 0, SEEK_END);
+            long diff = _ftell(file) - curr->offset;
             if (diff <= 0) {
                 debug_print("Wrong record size: %li\n", diff);
                 return MOBI_DATA_CORRUPT;
@@ -171,8 +171,8 @@ MOBI_RET mobi_load_rec(MOBIData *m, FILE *file) {
  @param[in] file Filedescriptor to read from
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_load_recdata(MOBIPdbRecord *rec, FILE *file) {
-    const int ret = fseek(file, rec->offset, SEEK_SET);
+MOBI_RET mobi_load_recdata(MOBIPdbRecord *rec, _FILE *file) {
+    const int ret = _fseek(file, rec->offset, SEEK_SET);
     if (ret != 0) {
         debug_print("Record %i not found\n", rec->uid);
         return MOBI_DATA_CORRUPT;
@@ -182,7 +182,7 @@ MOBI_RET mobi_load_recdata(MOBIPdbRecord *rec, FILE *file) {
         debug_print("%s", "Memory allocation for pdb record data failed\n");
         return MOBI_MALLOC_FAILED;
     }
-    const size_t len = fread(rec->data, 1, rec->size, file);
+    const size_t len = _fread(rec->data, 1, rec->size, file);
     if (len < rec->size) {
         debug_print("Truncated data in record %i\n", rec->uid);
         return MOBI_DATA_CORRUPT;
@@ -776,7 +776,7 @@ MOBI_RET mobi_parse_fdst(const MOBIData *m, MOBIRawml *rawml) {
  @param[in] file File descriptor to read from
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_load_file(MOBIData *m, FILE *file) {
+MOBI_RET mobi_load_file(MOBIData *m, _FILE *file) {
     MOBI_RET ret;
     if (m == NULL) {
         debug_print("%s", "Mobi structure not initialized\n");
@@ -842,12 +842,12 @@ MOBI_RET mobi_load_file(MOBIData *m, FILE *file) {
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
 MOBI_RET mobi_load_filename(MOBIData *m, const char *path) {
-    FILE *file = fopen(path, "rb");
+    _FILE *file = fopen(path, "rb");
     if (file == NULL) {
         debug_print("%s", "File not found\n");
         return MOBI_FILE_NOT_FOUND;
     }
     const MOBI_RET ret = mobi_load_file(m, file);
-    fclose(file);
+    _fclose(file);
     return ret;
 }

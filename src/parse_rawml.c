@@ -17,11 +17,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <malloc.h>
 #include "parse_rawml.h"
 #include "util.h"
 #include "opf.h"
 #include "index.h"
 #include "debug.h"
+
+#ifdef _WIN32
+#define snprintf _snprintf
+#endif
 
 
 /**
@@ -212,7 +217,7 @@ MOBI_RET mobi_find_attrname(MOBIResult *result, const unsigned char *data_start,
         return MOBI_PARAM_ERR;
     }
     size_t needle_length = strlen(attrname);
-    char needle[needle_length + 2];
+    char *needle = (char*)alloca(needle_length + 2);
     strcpy(needle, attrname);
     strcat(needle, "=");
     needle_length++;
@@ -901,7 +906,7 @@ MOBI_RET mobi_reconstruct_parts(MOBIRawml *rawml) {
                 insert_position = skel_length;
             }
             size_t skel_end_length = skel_length - insert_position;
-            char skel_text_end[skel_end_length + 1];
+            char *skel_text_end = (char*)alloca(skel_end_length + 1);
             strncpy(skel_text_end, skel_text + insert_position, skel_end_length);
             skel_text_end[skel_end_length] = '\0';
             skel_text[insert_position] = '\0';

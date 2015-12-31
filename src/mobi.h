@@ -22,10 +22,14 @@
 #include <time.h>
 
 /** @brief Visibility attributes for symbol export */
+#ifndef _WIN32
 #if defined (__CYGWIN__) || defined (__MINGW32__)
 #define MOBI_EXPORT __attribute__((visibility("default"))) __declspec(dllexport) extern
 #else
 #define MOBI_EXPORT __attribute__((__visibility__("default")))
+#endif
+#else
+#define MOBI_EXPORT
 #endif
 
 /** 
@@ -468,8 +472,15 @@ extern "C"
      @defgroup mobi_export Functions exported by the library
      @{
      */
+	typedef void *_FILE;
+	size_t __cdecl _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+	size_t __cdecl _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+	int __cdecl _fseek(_FILE * _File, long _Offset, int _Origin);
+	long __cdecl _ftell(_FILE * _File);
+	int __cdecl _fclose(_FILE * _File);
+
     MOBI_EXPORT const char * mobi_version(void);
-    MOBI_EXPORT MOBI_RET mobi_load_file(MOBIData *m, FILE *file);
+    MOBI_EXPORT MOBI_RET mobi_load_file(MOBIData *m, _FILE *file);
     MOBI_EXPORT MOBI_RET mobi_load_filename(MOBIData *m, const char *path);
     
     MOBI_EXPORT MOBIData * mobi_init(void);
@@ -482,7 +493,7 @@ extern "C"
     MOBI_EXPORT MOBI_RET mobi_parse_rawml_opt(MOBIRawml *rawml, const MOBIData *m, bool parse_toc, bool parse_dict, bool reconstruct);
 
     MOBI_EXPORT MOBI_RET mobi_get_rawml(const MOBIData *m, char *text, size_t *len);
-    MOBI_EXPORT MOBI_RET mobi_dump_rawml(const MOBIData *m, FILE *file);
+    MOBI_EXPORT MOBI_RET mobi_dump_rawml(const MOBIData *m, _FILE *file);
     MOBI_EXPORT MOBI_RET mobi_decode_font_resource(unsigned char **decoded_font, size_t *decoded_size, MOBIPart *part);
     MOBI_EXPORT MOBI_RET mobi_decode_audio_resource(unsigned char **decoded_resource, size_t *decoded_size, MOBIPart *part);
     MOBI_EXPORT MOBI_RET mobi_decode_video_resource(unsigned char **decoded_resource, size_t *decoded_size, MOBIPart *part);

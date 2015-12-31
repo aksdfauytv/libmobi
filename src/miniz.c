@@ -26,7 +26,7 @@
  - Retested this build under Windows (VS 2010, including static analysis), tcc  0.9.26, gcc v4.6 and clang v3.3.
  - Added example6.c, which dumps an image of the mandelbrot set to a PNG file.
  - Modified example2 to help test the MZ_ZIP_FLAG_DO_NOT_SORT_CENTRAL_DIRECTORY flag more.
- - In r3: Bugfix to mz_zip_writer_add_file() found during merge: Fix possible src file fclose() leak if alignment bytes+local header file write faiiled
+ - In r3: Bugfix to mz_zip_writer_add_file() found during merge: Fix possible src file _fclose() leak if alignment bytes+local header file write faiiled
  - In r4: Minor bugfix to mz_zip_writer_add_from_zip_reader(): Was pushing the wrong central dir header offset, appears harmless in this release, but it became a problem in the zip64 branch
  5/20/12 v1.14 - MinGW32/64 GCC 4.6.1 compiler fixes: added MZ_FORCEINLINE, #include <time.h> (thanks fermtect).
  5/19/12 v1.13 - From jason@cornsyrup.org and kelwert@mtu.edu - Fix mz_crc32() so it doesn't compute the wrong CRC-32's when mz_ulong is 64-bit.
@@ -38,7 +38,7 @@
  - Added miniz_tester solution/project, which is a useful little app derived from LZHAM's tester app that I use as part of the regression test.
  - Ran miniz.c and tinfl.c through another series of regression testing on ~500,000 files and archives.
  - Modified example5.c so it purposely disables a bunch of high-level functionality (MINIZ_NO_STDIO, etc.). (Thanks to corysama for the MINIZ_NO_STDIO bug report.)
- - Fix ftell() usage in examples so they exit with an error on files which are too large (a limitation of the examples, not miniz itself).
+ - Fix _ftell() usage in examples so they exit with an error on files which are too large (a limitation of the examples, not miniz itself).
  4/12/12 v1.12 - More comments, added low-level example5.c, fixed a couple minor level_and_flags issues in the archive API's.
  level_and_flags can now be set to MZ_DEFAULT_COMPRESSION. Thanks to Bruce Dawson <bruced@valvesoftware.com> for the feedback/bug report.
  5/28/11 v1.11 - Added statement from unlicense.org
@@ -2850,17 +2850,25 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #else
 #include <stdio.h>
 #include <sys/stat.h>
+
+	
+typedef void *_FILE;
+size_t __cdecl _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+size_t __cdecl _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+int __cdecl _fseek(_FILE * _File, long _Offset, int _Origin);
+long __cdecl _ftell(_FILE * _File);
+int __cdecl _fclose(_FILE * _File);
     
 #if defined(_MSC_VER) || defined(__MINGW64__)
-    static FILE *mz_fopen(const char *pFilename, const char *pMode)
+    static _FILE *mz_fopen(const char *pFilename, const char *pMode)
     {
-        FILE* pFile = NULL;
+        _FILE* pFile = NULL;
         fopen_s(&pFile, pFilename, pMode);
         return pFile;
     }
-    static FILE *mz_freopen(const char *pPath, const char *pMode, FILE *pStream)
+    static _FILE *mz_freopen(const char *pPath, const char *pMode, _FILE *pStream)
     {
-        FILE* pFile = NULL;
+        _FILE* pFile = NULL;
         if (freopen_s(&pFile, pPath, pMode, pStream))
             return NULL;
         return pFile;
@@ -2868,11 +2876,11 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #ifndef MINIZ_NO_TIME
 #include <sys/utime.h>
 #endif
-#define MZ_FILE FILE
+#define MZ_FILE _FILE
 #define MZ_FOPEN mz_fopen
-#define MZ_FCLOSE fclose
-#define MZ_FREAD fread
-#define MZ_FWRITE fwrite
+#define MZ_FCLOSE _fclose
+#define MZ_FREAD _fread
+#define MZ_FWRITE _fwrite
 #define MZ_FTELL64 _ftelli64
 #define MZ_FSEEK64 _fseeki64
 #define MZ_FILE_STAT_STRUCT _stat
@@ -2884,11 +2892,11 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #ifndef MINIZ_NO_TIME
 #include <sys/utime.h>
 #endif
-#define MZ_FILE FILE
+#define MZ_FILE _FILE
 #define MZ_FOPEN(f, m) fopen(f, m)
-#define MZ_FCLOSE fclose
-#define MZ_FREAD fread
-#define MZ_FWRITE fwrite
+#define MZ_FCLOSE _fclose
+#define MZ_FREAD _fread
+#define MZ_FWRITE _fwrite
 #define MZ_FTELL64 ftello64
 #define MZ_FSEEK64 fseeko64
 #define MZ_FILE_STAT_STRUCT _stat
@@ -2900,13 +2908,13 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #ifndef MINIZ_NO_TIME
 #include <sys/utime.h>
 #endif
-#define MZ_FILE FILE
+#define MZ_FILE _FILE
 #define MZ_FOPEN(f, m) fopen(f, m)
-#define MZ_FCLOSE fclose
-#define MZ_FREAD fread
-#define MZ_FWRITE fwrite
-#define MZ_FTELL64 ftell
-#define MZ_FSEEK64 fseek
+#define MZ_FCLOSE _fclose
+#define MZ_FREAD _fread
+#define MZ_FWRITE _fwrite
+#define MZ_FTELL64 _ftell
+#define MZ_FSEEK64 _fseek
 #define MZ_FILE_STAT_STRUCT stat
 #define MZ_FILE_STAT stat
 #define MZ_FFLUSH fflush
@@ -2916,11 +2924,11 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #ifndef MINIZ_NO_TIME
 #include <utime.h>
 #endif
-#define MZ_FILE FILE
+#define MZ_FILE _FILE
 #define MZ_FOPEN(f, m) fopen64(f, m)
-#define MZ_FCLOSE fclose
-#define MZ_FREAD fread
-#define MZ_FWRITE fwrite
+#define MZ_FCLOSE _fclose
+#define MZ_FREAD _fread
+#define MZ_FWRITE _fwrite
 #define MZ_FTELL64 ftello64
 #define MZ_FSEEK64 fseeko64
 #define MZ_FILE_STAT_STRUCT stat64
@@ -2932,11 +2940,11 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 #ifndef MINIZ_NO_TIME
 #include <utime.h>
 #endif
-#define MZ_FILE FILE
+#define MZ_FILE _FILE
 #define MZ_FOPEN(f, m) fopen(f, m)
-#define MZ_FCLOSE fclose
-#define MZ_FREAD fread
-#define MZ_FWRITE fwrite
+#define MZ_FCLOSE _fclose
+#define MZ_FREAD _fread
+#define MZ_FWRITE _fwrite
 #define MZ_FTELL64 ftello
 #define MZ_FSEEK64 fseeko
 #define MZ_FILE_STAT_STRUCT stat

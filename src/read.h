@@ -20,9 +20,9 @@
 
 MOBI_RET mobi_parse_fdst(const MOBIData *m, MOBIRawml *rawml);
 MOBI_RET mobi_parse_huffdic(const MOBIData *m, MOBIHuffCdic *cdic);
-MOBI_RET mobi_load_pdbheader(MOBIData *m, FILE *file);
-MOBI_RET mobi_load_reclist(MOBIData *m, FILE *file);
-MOBI_RET mobi_load_rec(MOBIData *m, FILE *file);
-MOBI_RET mobi_load_recdata(MOBIPdbRecord *rec, FILE *file);
+MOBI_RET mobi_load_pdbheader(MOBIData *m, _FILE *file);
+MOBI_RET mobi_load_reclist(MOBIData *m, _FILE *file);
+MOBI_RET mobi_load_rec(MOBIData *m, _FILE *file);
+MOBI_RET mobi_load_recdata(MOBIPdbRecord *rec, _FILE *file);
 
 #endif
