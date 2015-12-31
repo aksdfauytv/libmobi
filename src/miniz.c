@@ -2853,11 +2853,11 @@ if ((d->m_dict[probe_pos + match_len] == c0) && (d->m_dict[probe_pos + match_len
 
 	
 typedef void *_FILE;
-size_t __cdecl _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
-size_t __cdecl _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
-int __cdecl _fseek(_FILE * _File, long _Offset, int _Origin);
-long __cdecl _ftell(_FILE * _File);
-int __cdecl _fclose(_FILE * _File);
+size_t _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+size_t _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+int _fseek(_FILE * _File, long _Offset, int _Origin);
+long _ftell(_FILE * _File);
+int _fclose(_FILE * _File);
     
 #if defined(_MSC_VER) || defined(__MINGW64__)
     static _FILE *mz_fopen(const char *pFilename, const char *pMode)

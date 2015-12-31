@@ -473,11 +473,11 @@ extern "C"
      @{
      */
 	typedef void *_FILE;
-	size_t __cdecl _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
-	size_t __cdecl _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
-	int __cdecl _fseek(_FILE * _File, long _Offset, int _Origin);
-	long __cdecl _ftell(_FILE * _File);
-	int __cdecl _fclose(_FILE * _File);
+	size_t _fwrite(const void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+	size_t _fread(void * _Str, size_t _Size, size_t _Count, _FILE * _File);
+	int _fseek(_FILE * _File, long _Offset, int _Origin);
+	long _ftell(_FILE * _File);
+	int _fclose(_FILE * _File);
 
     MOBI_EXPORT const char * mobi_version(void);
     MOBI_EXPORT MOBI_RET mobi_load_file(MOBIData *m, _FILE *file);
