@@ -25,7 +25,8 @@ typedef struct {
 } MOBIBuffer;
 
 MOBIBuffer * buffer_init(const size_t len);
-MOBIBuffer * buffer_init_null(const size_t len);
+MOBIBuffer * buffer_init_null(unsigned char *data, const size_t len);
+void buffer_resize(MOBIBuffer *buf, const size_t newlen);
 void buffer_add8(MOBIBuffer *buf, const uint8_t data);
 void buffer_add16(MOBIBuffer *buf, const uint16_t data);
 void buffer_add32(MOBIBuffer *buf, const uint32_t data);
@@ -45,10 +46,12 @@ void buffer_appendstring(char *str, MOBIBuffer *buf, const size_t len);
 void buffer_getraw(void *data, MOBIBuffer *buf, const size_t len);
 unsigned char * buffer_getpointer(MOBIBuffer *buf, const size_t len);
 void buffer_copy8(MOBIBuffer *in, MOBIBuffer *source);
-void buffer_copy(MOBIBuffer *dest, MOBIBuffer *source, size_t len);
+void buffer_move(MOBIBuffer *buf, const int offset, const size_t len);
+void buffer_copy(MOBIBuffer *dest, MOBIBuffer *source, const size_t len);
 bool buffer_match_magic(MOBIBuffer *buf, const char *magic);
-void buffer_seek(MOBIBuffer *buf, int diff);
-void buffer_setpos(MOBIBuffer *buf, size_t pos);
+bool buffer_match_magic_offset(MOBIBuffer *buf, const char *magic, const size_t offset);
+void buffer_seek(MOBIBuffer *buf, const int diff);
+void buffer_setpos(MOBIBuffer *buf, const size_t pos);
 void buffer_free(MOBIBuffer *buf);
 void buffer_free_null(MOBIBuffer *buf);
 

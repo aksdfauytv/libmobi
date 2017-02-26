@@ -16,6 +16,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "opf.h"
+#ifdef USE_LIBXML2
 #ifdef __clang__
 #pragma clang diagnostic push
 /* suppress clang documentation warning for libxml headers */
@@ -26,7 +28,9 @@
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
-#include "opf.h"
+#else
+#include "xmlwriter.h"
+#endif
 #include "index.h"
 #include "util.h"
 #include "parse_rawml.h"
@@ -110,6 +114,13 @@ MOBI_RET mobi_build_opf_guide(OPF *opf, const MOBIRawml *rawml) {
         debug_print("%s\n", "Memory allocation failed");
         return MOBI_MALLOC_FAILED;
     }
+    if (rawml->guide->cncx_record == NULL) {
+        free(reference);
+        free(opf->guide);
+        opf->guide = NULL;
+        debug_print("%s\n", "Missing cncx record");
+        return MOBI_DATA_CORRUPT;
+    }
     while (i < count) {
         const MOBIIndexEntry *guide_entry = &rawml->guide->entries[i];
         const char *type = guide_entry->label;
@@ -122,7 +133,7 @@ MOBI_RET mobi_build_opf_guide(OPF *opf, const MOBIRawml *rawml) {
             return ret;
         }
         const MOBIPdbRecord *cncx_record = rawml->guide->cncx_record;
-        char *ref_title = mobi_get_cncx_string(cncx_record, cncx_offset);
+        char *ref_title = mobi_get_cncx_string_utf8(cncx_record, cncx_offset, rawml->guide->encoding);
         if (ref_title == NULL) {
             free(reference);
             free(opf->guide);
@@ -139,6 +150,12 @@ MOBI_RET mobi_build_opf_guide(OPF *opf, const MOBIRawml *rawml) {
             continue;
             /* FIXME: I need some examples which use other tags */
             //mobi_get_indxentry_tagvalue(&frag_number, guide_entry, INDX_TAG_FRAG_FILE_NR);
+        }
+        if (frag_number > rawml->frag->entries_count) {
+            debug_print("Wrong frag entry index (%i)\n", frag_number);
+            free(ref_title);
+            i++;
+            continue;
         }
         const MOBIIndexEntry *frag_entry = &rawml->frag->entries[frag_number];
         uint32_t file_number;
@@ -157,9 +174,25 @@ MOBI_RET mobi_build_opf_guide(OPF *opf, const MOBIRawml *rawml) {
             /* prepend "other." prefix */
             type_size += 6;
             ref_type = malloc(type_size + 1);
+            if (ref_type == NULL) {
+                free(reference);
+                free(opf->guide);
+                opf->guide = NULL;
+                free(ref_title);
+                debug_print("%s\n", "Memory allocation failed");
+                return MOBI_MALLOC_FAILED;
+            }
             snprintf(ref_type, type_size + 1, "other.%s", type);
         } else {
             ref_type = malloc(type_size + 1);
+            if (ref_type == NULL) {
+                free(reference);
+                free(opf->guide);
+                opf->guide = NULL;
+                free(ref_title);
+                debug_print("%s\n", "Memory allocation failed");
+                return MOBI_MALLOC_FAILED;
+            }
             strncpy(ref_type, type, type_size);
             ref_type[type_size] = '\0';
         }
@@ -197,11 +230,46 @@ MOBI_RET mobi_write_ncx_level(xmlTextWriterPtr writer, const NCX *ncx, const siz
         /* start <navPoint> */
         char playorder[10 + 1];
         snprintf(playorder, 11, "%u", (uint32_t) (*seq)++);
-        char id[20 + 5 + 1];
-        snprintf(id, 26, "toc-%u-%u", (uint32_t) (level + 1), (uint32_t) (i - from + 1));
+
+        /* id string (max 10 digits and dash) for each level + "toc" + terminator */
+        size_t id_size = 11 * (level + 1) + 3 + 1;
+        char *id = malloc(id_size);
+        if (id == NULL) {
+            debug_print("%s\n", "Memory allocation failed");
+            return MOBI_MALLOC_FAILED;
+        }
+        strcpy(id, "toc");
+        size_t curr_id = i;
+        while (curr_id != MOBI_NOTSET) {
+            size_t parent_id = ncx[curr_id].parent;
+            if (parent_id == curr_id) {
+                debug_print("%s\n", "Skip id of corrupt ncx entry");
+                break;
+            }
+            size_t curr_from = 0;
+            if (parent_id != MOBI_NOTSET && ncx[parent_id].first_child != MOBI_NOTSET) {
+                curr_from = ncx[parent_id].first_child;
+            }
+            char level_id[10 + 1];
+            snprintf(level_id, 11, "%u", (uint32_t) (curr_id - curr_from + 1));
+            char *id_copy = strdup(id + 3);
+            if (id_copy == NULL) {
+                debug_print("%s\n", "Memory allocation failed");
+                free(id);
+                return MOBI_MALLOC_FAILED;
+            }
+            snprintf(id, id_size, "toc-%s%s", level_id, id_copy);
+            free(id_copy);
+            curr_id = parent_id;
+        }
+        
         int xml_ret = xmlTextWriterStartElement(writer, BAD_CAST "navPoint");
-        if (xml_ret < 0) { return MOBI_XML_ERR; }
+        if (xml_ret < 0) {
+            free(id);
+            return MOBI_XML_ERR;
+        }
         xml_ret = xmlTextWriterWriteAttribute(writer, BAD_CAST "id", BAD_CAST id);
+        free(id);
         if (xml_ret < 0) { return MOBI_XML_ERR; }
         xml_ret = xmlTextWriterWriteAttribute(writer, BAD_CAST "playOrder", BAD_CAST playorder);
         if (xml_ret < 0) { return MOBI_XML_ERR; }
@@ -224,8 +292,11 @@ MOBI_RET mobi_write_ncx_level(xmlTextWriterPtr writer, const NCX *ncx, const siz
         xml_ret = xmlTextWriterEndElement(writer);
         if (xml_ret < 0) { return MOBI_XML_ERR; }
         debug_print("%s - %s\n", ncx[i].text, ncx[i].target);
-        if (ncx[i].first_child != MOBI_NOTSET) {
-            mobi_write_ncx_level(writer, ncx, level + 1, ncx[i].first_child, ncx[i].last_child, seq);
+        if (ncx[i].first_child != MOBI_NOTSET && ncx[i].last_child != MOBI_NOTSET) {
+            MOBI_RET ret = mobi_write_ncx_level(writer, ncx, level + 1, ncx[i].first_child, ncx[i].last_child, seq);
+            if (ret != MOBI_SUCCESS) {
+                return ret;
+            }
         }
         /* end <navPoint> */
         xml_ret = xmlTextWriterEndElement(writer);
@@ -290,9 +361,17 @@ MOBI_RET mobi_opf_add_to_rawml(const char *opf_xml, MOBIRawml *rawml) {
         rawml->resources = calloc(1, sizeof(MOBIPart));
         opf_part = rawml->resources;
     }
+    if (opf_part == NULL) {
+        return MOBI_MALLOC_FAILED;
+    }
     opf_part->uid = uid;
     opf_part->next = NULL;
     opf_part->data = (unsigned char *) strdup(opf_xml);
+    if (opf_part->data == NULL) {
+        free(opf_part);
+        opf_part = NULL;
+        return MOBI_MALLOC_FAILED;
+    }
     opf_part->size = strlen(opf_xml);
     opf_part->type = T_OPF;
     return MOBI_SUCCESS;
@@ -321,9 +400,17 @@ MOBI_RET mobi_ncx_add_to_rawml(const char *ncx_xml, MOBIRawml *rawml) {
         rawml->resources = calloc(1, sizeof(MOBIPart));
         ncx_part = rawml->resources;
     }
+    if (ncx_part == NULL) {
+        return MOBI_MALLOC_FAILED;
+    }
     ncx_part->uid = uid;
     ncx_part->next = NULL;
     ncx_part->data = (unsigned char *) strdup(ncx_xml);
+    if (ncx_part->data == NULL) {
+        free(ncx_part);
+        ncx_part = NULL;
+        return MOBI_MALLOC_FAILED;
+    }
     ncx_part->size = strlen(ncx_xml);
     ncx_part->type = T_NCX;
     return MOBI_SUCCESS;
@@ -411,7 +498,7 @@ MOBI_RET mobi_write_ncx(MOBIRawml *rawml, const NCX *ncx, const OPF *opf, uint32
     /* start <navMap> */
     xml_ret = xmlTextWriterStartElement(writer, BAD_CAST "navMap");
     if (xml_ret < 0) { goto cleanup; }
-    if (rawml->ncx) {
+    if (ncx) {
         const size_t count = rawml->ncx->entries_count;
         size_t seq = 1;
         ret = mobi_write_ncx_level(writer, ncx, 0, 0, count, &seq);
@@ -464,7 +551,7 @@ MOBI_RET mobi_build_ncx(MOBIRawml *rawml, const OPF *opf) {
         debug_print("%s\n", "Initialization failed");
         return MOBI_INIT_FAILED;
     }
-    if (rawml->ncx) {
+    if (rawml->ncx && rawml->ncx->cncx_record) {
         size_t i = 0;
         uint32_t maxlevel = 0;
         MOBI_RET ret;
@@ -473,6 +560,10 @@ MOBI_RET mobi_build_ncx(MOBIRawml *rawml, const OPF *opf) {
             return MOBI_SUCCESS;
         }
         NCX *ncx = malloc(count * sizeof(NCX));
+        if (ncx == NULL) {
+            debug_print("%s\n", "Memory allocation failed");
+            return MOBI_MALLOC_FAILED;
+        }
         while (i < count) {
             const MOBIIndexEntry *ncx_entry = &rawml->ncx->entries[i];
             const char *label = ncx_entry->label;
@@ -484,7 +575,7 @@ MOBI_RET mobi_build_ncx(MOBIRawml *rawml, const OPF *opf) {
                 return ret;
             }
             const MOBIPdbRecord *cncx_record = rawml->ncx->cncx_record;
-            char *text = mobi_get_cncx_string(cncx_record, cncx_offset);
+            char *text = mobi_get_cncx_string_utf8(cncx_record, cncx_offset, rawml->ncx->encoding);
             if (text == NULL) {
                 mobi_free_ncx(ncx, i);
                 debug_print("%s\n", "Memory allocation failed");
@@ -576,8 +667,16 @@ MOBI_RET mobi_build_ncx(MOBIRawml *rawml, const OPF *opf) {
                 mobi_free_ncx(ncx, i);
                 return ret;
             }
+            if ((first_child != MOBI_NOTSET && first_child > rawml->ncx->entries_count) ||
+                (last_child != MOBI_NOTSET && last_child > rawml->ncx->entries_count) ||
+                (parent != MOBI_NOTSET && parent > rawml->ncx->entries_count)) {
+                free(text);
+                free(target);
+                mobi_free_ncx(ncx, i);
+                return MOBI_DATA_CORRUPT;
+            }
             debug_print("seq=%zu, id=%zu, text='%s', target='%s', level=%u, parent=%u, fchild=%u, lchild=%u\n", i, id, text, target, level, parent, first_child, last_child);
-            ncx[i++] = (NCX) {id, text, target, level, parent, first_child,last_child};
+            ncx[i++] = (NCX) {id, text, target, level, parent, first_child, last_child};
         }
         mobi_write_ncx(rawml, ncx, opf, maxlevel);
         mobi_free_ncx(ncx, count);
@@ -614,7 +713,7 @@ static void mobi_opf_fill_tag(const MOBIData *m, const MOBIExthHeader *exth, cha
             value = malloc(10 + 1);
             if (value) {
                 const uint32_t val32 = mobi_decode_exthvalue(exth->data, exth->size);
-                snprintf(value, 10, "%d", val32);
+                snprintf(value, 10 + 1, "%d", val32);
             }
         } else if (exth_tag.type == EXTH_STRING) {
             value = mobi_decode_exthstring(m, exth->data, exth->size);
@@ -767,7 +866,7 @@ void mobi_opf_set_item(OPFmeta **meta, const char *name, const char *content) {
             value = malloc(10 + 1); \
             if (value) { \
                 const uint32_t val32 = mobi_decode_exthvalue(curr->data, curr->size); \
-                snprintf(value, 10, "%d", val32); \
+                snprintf(value, 10 + 1, "%d", val32); \
             } else { \
                 error_ret = MOBI_MALLOC_FAILED; \
             } \
@@ -1020,16 +1119,11 @@ MOBI_RET mobi_build_opf_metadata(OPF *opf,  const MOBIData *m, const MOBIRawml *
             debug_print("%s\n", "Memory allocation failed");
             return MOBI_MALLOC_FAILED;
         }
-        if (m->mh && m->mh->full_name_offset && m->mh->full_name_length) {
-            size_t len = *m->mh->full_name_length;
-            char full_name[len + 1];
-            mobi_get_fullname(m, full_name, len);
-            opf->metadata->dc_meta->title[0] = strdup(full_name);
-        } else if (m->ph && strlen(m->ph->name) > 0) {
-            opf->metadata->dc_meta->title[0] = strdup(m->ph->name);
-        } else {
-            opf->metadata->dc_meta->title[0] = strdup("Unknown");
+        char *title = mobi_meta_get_title(m);
+        if (title == NULL) {
+            title = strdup("Unknown");
         }
+        opf->metadata->dc_meta->title[0] = title;
     }
     if (opf->metadata->dc_meta->language == NULL) {
         opf->metadata->dc_meta->language = calloc(OPF_META_MAX_TAGS, sizeof(char*));
@@ -1037,9 +1131,13 @@ MOBI_RET mobi_build_opf_metadata(OPF *opf,  const MOBIData *m, const MOBIRawml *
             debug_print("%s\n", "Memory allocation failed");
             return MOBI_MALLOC_FAILED;
         }
+        const char *lang_string = NULL;
         if (m->mh && m->mh->locale) {
             uint32_t lang_code = *m->mh->locale;
-            opf->metadata->dc_meta->language[0] = strdup(mobi_get_locale_string(lang_code));
+            lang_string = mobi_get_locale_string(lang_code);
+        }
+        if (lang_string) {
+            opf->metadata->dc_meta->language[0] = strdup(lang_string);
         } else {
             opf->metadata->dc_meta->language[0] = strdup("en");
         }
@@ -1070,6 +1168,10 @@ MOBI_RET mobi_build_opf_metadata(OPF *opf,  const MOBIData *m, const MOBIRawml *
         }
         if (rawml->orth->orth_index_name) {
             opf->metadata->x_meta->default_lookup_index = calloc(OPF_META_MAX_TAGS, sizeof(char*));
+			if (opf->metadata->x_meta->default_lookup_index == NULL) {
+				debug_print("%s\n", "Memory allocation failed");
+				return MOBI_MALLOC_FAILED;
+			}
             opf->metadata->x_meta->default_lookup_index[0] = strdup(rawml->orth->orth_index_name);
         }
     }
@@ -1273,7 +1375,7 @@ MOBI_RET mobi_xml_write_spine(xmlTextWriterPtr writer, const MOBIRawml *rawml) {
         curr = curr->next;
     }
     if (curr) {
-        sprintf(ncxid, "resource%05zu", curr->uid);
+        snprintf(ncxid, sizeof(ncxid), "resource%05zu", curr->uid);
     } else {
         return MOBI_DATA_CORRUPT;
     }
@@ -1291,7 +1393,7 @@ MOBI_RET mobi_xml_write_spine(xmlTextWriterPtr writer, const MOBIRawml *rawml) {
     char id[9 + 1];
     curr = rawml->markup;
     while (curr != NULL) {
-        sprintf(id, "part%05zu", curr->uid);
+        snprintf(id, sizeof(id), "part%05zu", curr->uid);
         xml_ret = xmlTextWriterStartElement(writer, BAD_CAST "itemref");
         if (xml_ret < 0) {
             debug_print("XML error: %i (itemref)\n", xml_ret);
@@ -1333,8 +1435,8 @@ MOBI_RET mobi_xml_write_manifest(xmlTextWriterPtr writer, const MOBIRawml *rawml
         curr = curr->next;
         while (curr != NULL) {
             MOBIFileMeta file_meta = mobi_get_filemeta_by_type(curr->type);
-            sprintf(href, "flow%05zu.%s", curr->uid, file_meta.extension);
-            sprintf(id, "flow%05zu", curr->uid);
+            snprintf(href, sizeof(href), "flow%05zu.%s", curr->uid, file_meta.extension);
+            snprintf(id, sizeof(id), "flow%05zu", curr->uid);
             MOBI_RET ret = mobi_xml_write_item(writer, id, href, file_meta.mime_type);
             if (ret != MOBI_SUCCESS) {
                 return ret;
@@ -1346,8 +1448,8 @@ MOBI_RET mobi_xml_write_manifest(xmlTextWriterPtr writer, const MOBIRawml *rawml
         MOBIPart *curr = rawml->markup;
         while (curr != NULL) {
             MOBIFileMeta file_meta = mobi_get_filemeta_by_type(curr->type);
-            sprintf(href, "part%05zu.%s", curr->uid, file_meta.extension);
-            sprintf(id, "part%05zu", curr->uid);
+            snprintf(href, sizeof(href), "part%05zu.%s", curr->uid, file_meta.extension);
+            snprintf(id, sizeof(id), "part%05zu", curr->uid);
             MOBI_RET ret = mobi_xml_write_item(writer, id, href, file_meta.mime_type);
             if (ret != MOBI_SUCCESS) {
                 return ret;
@@ -1359,8 +1461,8 @@ MOBI_RET mobi_xml_write_manifest(xmlTextWriterPtr writer, const MOBIRawml *rawml
         MOBIPart *curr = rawml->resources;
         while (curr != NULL) {
             MOBIFileMeta file_meta = mobi_get_filemeta_by_type(curr->type);
-            sprintf(href, "resource%05zu.%s", curr->uid, file_meta.extension);
-            sprintf(id, "resource%05zu", curr->uid);
+            snprintf(href, sizeof(href), "resource%05zu.%s", curr->uid, file_meta.extension);
+            snprintf(id, sizeof(id), "resource%05zu", curr->uid);
             MOBI_RET ret = mobi_xml_write_item(writer, id, href, file_meta.mime_type);
             if (ret != MOBI_SUCCESS) {
                 return ret;
@@ -1548,7 +1650,7 @@ MOBI_RET mobi_xml_write_dcmeta_date(xmlTextWriterPtr writer, const OPFdate **dat
                 return MOBI_XML_ERR;
             }
             if (date[i]->event) {
-                xml_ret = xmlTextWriterWriteAttribute(writer, BAD_CAST "event", BAD_CAST date[i]->event);
+                xml_ret = xmlTextWriterWriteAttributeNS(writer, BAD_CAST "opf", BAD_CAST "event", NULL, BAD_CAST date[i]->event);
                 if (xml_ret < 0) {
                     debug_print("XML error: %i (date event: %s)\n", xml_ret, date[i]->event);
                     return MOBI_XML_ERR;
