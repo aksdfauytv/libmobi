@@ -94,7 +94,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-noxml-release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='mobitool|Win32'">
     <PlatformToolset>v140</PlatformToolset>
@@ -264,7 +264,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-noxml-debug|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>USE_XMLWRITER=1;USE_ENCRYPTION=1;_CRT_SECURE_NO_WARNINGS;MOBI_DEBUG=1;USE_MINIZ;__func__=__FUNCTION__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>USE_XMLWRITER=1;USE_ENCRYPTION=1;_CRT_SECURE_NO_WARNINGS;MOBI_DEBUG=1;__func__=__FUNCTION__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../zlib-1.2.5</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -324,7 +325,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-noxml-release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>USE_XMLWRITER=1;USE_ENCRYPTION=1;_CRT_SECURE_NO_WARNINGS;USE_MINIZ;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>USE_XMLWRITER=1;USE_ENCRYPTION=1;_CRT_SECURE_NO_WARNINGS;__func__=__FUNCTION__%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../zlib-1.2.5</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
