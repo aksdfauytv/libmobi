@@ -468,14 +468,15 @@ MOBI_RET mobi_get_aid_by_offset(char *aid, const MOBIPart *html, const size_t of
 }
 
 /**
- @brief Get value of the closest "id" attribute following given offset in a given part
+ @brief Get value of the closest "id" or "name" attribute following given offset in a given part
  
- @param[in,out] id String value of "id" attribute
+ @param[in,out] id String value of found attribute
  @param[in] html MOBIPart html part
  @param[in] offset Offset from the beginning of the part data
+ @param[in,out] pref_attr Preferred attribute to link to (id or name)
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_get_id_by_offset(char *id, const MOBIPart *html, const size_t offset) {
+MOBI_RET mobi_get_id_by_offset(char *id, const MOBIPart *html, const size_t offset, MOBIAttrType *pref_attr) {
     if (!id || !html) {
         debug_print("Parameter error (id (%p), html (%p)\n", (void *) id, (void *) html);
         return MOBI_PARAM_ERR;
@@ -487,11 +488,21 @@ MOBI_RET mobi_get_id_by_offset(char *id, const MOBIPart *html, const size_t offs
     const unsigned char *data = html->data;
     data += offset;
     size_t length = html->size - offset;
-    
-    size_t off = mobi_get_attribute_value(id, data, length, "id", true);
+    static const char * attributes[] = {
+        [ATTR_ID] = "id",
+        [ATTR_NAME] = "name",
+    };
+    size_t off = mobi_get_attribute_value(id, data, length, attributes[*pref_attr], true);
     if (off == SIZE_MAX) {
-        id[0] = '\0';
-        //return MOBI_DATA_CORRUPT;
+        // try optional attribute
+        const MOBIAttrType opt_attr = (*pref_attr == ATTR_ID) ? ATTR_NAME : ATTR_ID;
+        off = mobi_get_attribute_value(id, data, length, attributes[opt_attr], true);
+        if (off == SIZE_MAX) {
+            id[0] = '\0';
+        } else {
+            // save optional attribute as preferred
+            *pref_attr = opt_attr;
+        }
     }
     return MOBI_SUCCESS;
 }
@@ -531,9 +542,10 @@ MOBI_RET mobi_get_aid_by_posoff(uint32_t *file_number, char *aid, const MOBIRawm
  @param[in] rawml MOBIRawml parsed records structure
  @param[in] pos_fid X value of pos:fid:x
  @param[in] pos_off Y value of off:y
+ @param[in,out] pref_attr Attribute to link to
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_get_id_by_posoff(uint32_t *file_number, char *id, const MOBIRawml *rawml, const size_t pos_fid, const size_t pos_off) {
+MOBI_RET mobi_get_id_by_posoff(uint32_t *file_number, char *id, const MOBIRawml *rawml, const size_t pos_fid, const size_t pos_off, MOBIAttrType *pref_attr) {
     size_t offset;
     MOBI_RET ret = mobi_get_offset_by_posoff(file_number, &offset, rawml, pos_fid, pos_off);
     if (ret != MOBI_SUCCESS) {
@@ -543,7 +555,7 @@ MOBI_RET mobi_get_id_by_posoff(uint32_t *file_number, char *id, const MOBIRawml 
     if (html == NULL) {
         return MOBI_DATA_CORRUPT;
     }
-    ret = mobi_get_id_by_offset(id, html, offset);
+    ret = mobi_get_id_by_offset(id, html, offset, pref_attr);
     if (ret != MOBI_SUCCESS) {
         return MOBI_DATA_CORRUPT;
     }
@@ -565,17 +577,11 @@ MOBI_RET mobi_reconstruct_resources(const MOBIData *m, MOBIRawml *rawml) {
     }
     const MOBIPdbRecord *curr_record = mobi_get_record_by_seqnumber(m, first_res_seqnumber);
     if (curr_record == NULL) {
-        debug_print("First resource record not found at %zu\n", first_res_seqnumber);
-        return MOBI_DATA_CORRUPT;
+        debug_print("First resource record not found at %zu, skipping resources\n", first_res_seqnumber);
+        return MOBI_SUCCESS;
     }
-    rawml->resources = calloc(1, sizeof(MOBIPart));
-    if (rawml->resources == NULL) {
-        debug_print("%s", "Memory allocation for resources part failed\n");
-        return MOBI_MALLOC_FAILED;
-    }
-    MOBIPart *curr_part = rawml->resources;
     size_t i = 0;
-    int parts_count = 0;
+    MOBIPart *head = NULL;
     while (curr_record != NULL) {
         const MOBIFiletype filetype = mobi_determine_resource_type(curr_record);
         if (filetype == T_UNKNOWN) {
@@ -586,50 +592,49 @@ MOBI_RET mobi_reconstruct_resources(const MOBIData *m, MOBIRawml *rawml) {
         if (filetype == T_BREAK) {
             break;
         }
-        if (parts_count > 0) {
-            curr_part->next = calloc(1, sizeof(MOBIPart));
-            if (curr_part->next == NULL) {
-                debug_print("%s\n", "Memory allocation for flow part failed");
-                return MOBI_MALLOC_FAILED;
-            }
-            curr_part = curr_part->next;
-        }
         
+        MOBIPart *curr_part = calloc(1, sizeof(MOBIPart));;
+        if (curr_part == NULL) {
+            debug_print("%s\n", "Memory allocation for flow part failed");
+            return MOBI_MALLOC_FAILED;
+        }
         curr_part->data = curr_record->data;
         curr_part->size = curr_record->size;
+        curr_part->uid = i++;
+        curr_part->next = NULL;
         
-        MOBI_RET ret;
+        MOBI_RET ret = MOBI_SUCCESS;
         if (filetype == T_FONT) {
             ret = mobi_add_font_resource(curr_part);
             if (ret != MOBI_SUCCESS) {
                 debug_print("%s\n", "Decoding font resource failed");
-                return ret;
             }
         } else if (filetype == T_AUDIO) {
             ret = mobi_add_audio_resource(curr_part);
             if (ret != MOBI_SUCCESS) {
                 debug_print("%s\n", "Decoding audio resource failed");
-                return ret;
             }
         } else if (filetype == T_VIDEO) {
             ret = mobi_add_video_resource(curr_part);
             if (ret != MOBI_SUCCESS) {
                 debug_print("%s\n", "Decoding video resource failed");
-                return ret;
             }
         } else {
             curr_part->type = filetype;
         }
         
-        curr_part->uid = i;
-        curr_part->next = NULL;
         curr_record = curr_record->next;
-        i++;
-        parts_count++;
-    }
-    if (parts_count == 0) {
-        free(rawml->resources);
-        rawml->resources = NULL;
+        
+        if (ret != MOBI_SUCCESS) {
+            free(curr_part);
+            curr_part = NULL;
+        } else if (head) {
+            head->next = curr_part;
+            head = curr_part;
+        } else {
+            rawml->resources = curr_part;
+            head = curr_part;
+        }
     }
     return MOBI_SUCCESS;
 }
@@ -996,14 +1001,15 @@ MOBI_RET mobi_get_filepos_array(MOBIArray *links, const MOBIPart *part) {
  @brief Scan ncx part and build array of filepos link target offsets.
  
  @param[in,out] links MOBIArray structure for link target offsets array
- @param[in] part MOBIPart html part structure
+ @param[in] rawml MOBIRawml parsed records structure
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_get_ncx_filepos_array(MOBIArray *links, const MOBIPart *part) {
-    if (!links || !part) {
+MOBI_RET mobi_get_ncx_filepos_array(MOBIArray *links, const MOBIRawml *rawml) {
+    if (!links || !rawml) {
         return MOBI_PARAM_ERR;
     }
-    while ((part = part->next) != NULL) {
+    MOBIPart *part = rawml->resources;
+    while (part) {
         if (part->type == T_NCX) {
             size_t offset = 0;
             size_t size = part->size;
@@ -1023,6 +1029,7 @@ MOBI_RET mobi_get_ncx_filepos_array(MOBIArray *links, const MOBIPart *part) {
                 }
             }
         }
+        part = part->next;
     }
     return MOBI_SUCCESS;
 }
@@ -1033,9 +1040,10 @@ MOBI_RET mobi_get_ncx_filepos_array(MOBIArray *links, const MOBIPart *part) {
  @param[in,out] link Memory area which will be filled with "part00000.html#customid", including quotation marks
  @param[in] rawml Structure rawml
  @param[in] value String kindle:pos:fid:0000:off:0000000000, without quotation marks
+ @param[in,out] pref_attr Preferred attribute to link to (id or name)
  @return MOBI_RET status code (on success MOBI_SUCCESS)
  */
-MOBI_RET mobi_posfid_to_link(char *link, const MOBIRawml *rawml, const char *value) {
+MOBI_RET mobi_posfid_to_link(char *link, const MOBIRawml *rawml, const char *value, MOBIAttrType *pref_attr) {
     /* "kindle:pos:fid:0000:off:0000000000" */
     /* extract fid and off */
     if (strlen(value) < (sizeof("kindle:pos:fid:0000:off:0000000000") - 1)) {
@@ -1069,7 +1077,7 @@ MOBI_RET mobi_posfid_to_link(char *link, const MOBIRawml *rawml, const char *val
     }
     uint32_t part_id;
     char id[MOBI_ATTRVALUE_MAXSIZE + 1];
-    ret = mobi_get_id_by_posoff(&part_id, id, rawml, pos_fid, pos_off);
+    ret = mobi_get_id_by_posoff(&part_id, id, rawml, pos_fid, pos_off, pref_attr);
     if (ret != MOBI_SUCCESS) {
         return ret;
     }
@@ -1092,15 +1100,14 @@ MOBI_RET mobi_posfid_to_link(char *link, const MOBIRawml *rawml, const char *val
  */
 MOBI_RET mobi_flow_to_link(char *link, const MOBIRawml *rawml, const char *value) {
     /* "kindle:flow:0000?mime=" */
+    *link = '\0';
     if (strlen(value) < (sizeof("kindle:flow:0000?mime=") - 1)) {
         debug_print("Skipping too short link: %s\n", value);
-        *link = '\0';
         return MOBI_SUCCESS;
     }
     value += (sizeof("kindle:flow:") - 1);
     if (value[4] != '?') {
-        debug_print("Skipping malformed link: kindle:flow:%s\n", value);
-        *link = '\0';
+        debug_print("Skipping broken link: kindle:flow:%s\n", value);
         return MOBI_SUCCESS;
     }
     char str_fid[4 + 1];
@@ -1109,8 +1116,8 @@ MOBI_RET mobi_flow_to_link(char *link, const MOBIRawml *rawml, const char *value
     
     MOBIPart *flow = mobi_get_flow_by_fid(rawml, str_fid);
     if (flow == NULL) {
-        debug_print("Link corrupt: kindle:flow:%s\n", value);
-        return MOBI_DATA_CORRUPT;
+        debug_print("Skipping broken link (missing resource): kindle:flow:%s\n", value);
+        return MOBI_SUCCESS;
     }
     MOBIFileMeta meta = mobi_get_filemeta_by_type(flow->type);
     char *extension = meta.extension;
@@ -1132,9 +1139,9 @@ MOBI_RET mobi_embed_to_link(char *link, const MOBIRawml *rawml, const char *valu
     while (*value == '"' || *value == '\'' || isspace(*value)) {
         value++;
     }
+    *link = '\0';
     if (strlen(value) < (sizeof("kindle:embed:0000") - 1)) {
         debug_print("Skipping too short link: %s\n", value);
-        *link = '\0';
         return MOBI_SUCCESS;
     }
     value += (sizeof("kindle:embed:") - 1);
@@ -1146,13 +1153,14 @@ MOBI_RET mobi_embed_to_link(char *link, const MOBIRawml *rawml, const char *valu
     uint32_t part_id;
     MOBI_RET ret = mobi_base32_decode(&part_id, str_fid);
     if (ret != MOBI_SUCCESS) {
-        return ret;
+        debug_print("Skipping broken link (corrupt base32): kindle:embed:%s\n", value);
+        return MOBI_SUCCESS;
     }
     part_id--;
     MOBIPart *resource = mobi_get_resource_by_uid(rawml, part_id);
     if (resource == NULL) {
-        debug_print("Link corrupt: kindle:embed:%s\n", value);
-        return MOBI_DATA_CORRUPT;
+        debug_print("Skipping broken link (missing resource): kindle:embed:%s\n", value);
+        return MOBI_SUCCESS;
     }
     MOBIFileMeta meta = mobi_get_filemeta_by_type(resource->type);
     char *extension = meta.extension;
@@ -1193,6 +1201,7 @@ MOBI_RET mobi_reconstruct_links_kf8(const MOBIRawml *rawml) {
             MOBIFragment *first = NULL;
             MOBIFragment *curr = NULL;
             size_t part_size = 0;
+            MOBIAttrType pref_attr = ATTR_ID;
             while (true) {
                 mobi_search_links_kf8(&result, result.start, data_end, part->type);
                 if (result.start == NULL) {
@@ -1210,8 +1219,8 @@ MOBI_RET mobi_reconstruct_links_kf8(const MOBIRawml *rawml) {
                 if ((target = strstr(value, "kindle:pos:fid:")) != NULL) {
                     /* "kindle:pos:fid:0001:off:0000000000" */
                     /* replace link with href="part00000.html#00" */
-                    /* FIXME: this requires present target id tag */
-                    MOBI_RET ret = mobi_posfid_to_link(link, rawml, target);
+                    /* FIXME: this requires present target id or name attribute */
+                    MOBI_RET ret = mobi_posfid_to_link(link, rawml, target, &pref_attr);
                     if (ret != MOBI_SUCCESS) {
                         mobi_list_del_all(first);
                         return ret;
@@ -1613,7 +1622,7 @@ MOBI_RET mobi_reconstruct_links_kf7(const MOBIRawml *rawml) {
         array_free(links);
         return ret;
     }
-    ret = mobi_get_ncx_filepos_array(links, part);
+    ret = mobi_get_ncx_filepos_array(links, rawml);
     if (ret != MOBI_SUCCESS) {
         array_free(links);
         return ret;

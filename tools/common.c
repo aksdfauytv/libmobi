@@ -233,6 +233,9 @@ void print_summary(const MOBIData *m) {
         }
         printf("\n");
     }
+    if (mobi_is_replica(m)) {
+        printf("Print Replica\n");
+    }
     if (mobi_is_encrypted(m)) {
         printf("Document is encrypted\n");
     }
@@ -344,11 +347,6 @@ void print_exth(const MOBIData *m) {
             /* known tag */
             unsigned i = 0;
             size_t size = curr->size;
-            char *str = malloc(2 * size + 1);
-            if (!str) {
-                printf("Memory allocation failed\n");
-                exit(1);
-            }
             unsigned char *data = curr->data;
             switch (tag.type) {
                     /* numeric */
@@ -368,17 +366,26 @@ void print_exth(const MOBIData *m) {
                 }
                     /* binary */
                 case EXTH_BINARY:
-                    while (size--) {
+                {
+                    char *str = malloc(2 * size + 1);
+                    if (!str) {
+                        printf("Memory allocation failed\n");
+                        exit(1);
+                    }
+                    str[0] = '\0';
+                    while (size) {
                         uint8_t val8 = *data++;
                         sprintf(&str[i], "%02x", val8);
                         i += 2;
+                        size--;
                     }
                     printf("%s (%i): 0x%s\n", tag.name, tag.tag, str);
+                    free(str);
                     break;
+                }
                 default:
                     break;
             }
-            free(str);
         }
         curr = curr->next;
     }
