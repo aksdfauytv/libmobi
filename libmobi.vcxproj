@@ -53,7 +53,6 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{3CEE3EAD-623A-4FAA-8017-C1DB4D00A3E0}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-debug|Win32'" Label="Configuration">
@@ -84,7 +83,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-noxml-debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libmobi-release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
